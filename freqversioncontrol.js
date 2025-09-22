@@ -218,7 +218,8 @@ class NostalgiaVersionChecker {
             }
 
             const fileContent = fs.readFileSync(filePath, 'utf8');
-            const versionRegex = /def version\(self\) -> str:\s*\n\s*return\s*["']([^"']+)["']/;
+            // const versionRegex = /def version\(self\) -> str:\s*\n\s*return\s*["']([^"']+)["']/;
+            const versionRegex = /def\s+version\s*\(\s*self\s*\)\s*->\s*str\s*:\s*[\r\n\s]*return\s*["']([^"']+)["']/i;
             const match = fileContent.match(versionRegex);
 
             return match && match[1] ? match[1] : null;
@@ -229,11 +230,25 @@ class NostalgiaVersionChecker {
     }
 
     // Remote dosya için version bilgisi al
+    // async getRemoteVersionForFile(url) {
+    //     try {
+    //         const response = await axios.get(url, this.axiosConfig);
+    //         const versionRegex = /def version\(self\) -> str:\s*\n\s*return\s*["']([^"']+)["']/;
+    //         const match = response.data.match(versionRegex);
+
+    //         return match && match[1] ? match[1] : null;
+    //     } catch (error) {
+    //         console.error(`❌ Remote version alınırken hata (${url}):`, error.message);
+    //         return null;
+    //     }
+    // }
     async getRemoteVersionForFile(url) {
         try {
             const response = await axios.get(url, this.axiosConfig);
-            const versionRegex = /def version\(self\) -> str:\s*\n\s*return\s*["']([^"']+)["']/;
-            const match = response.data.match(versionRegex);
+            const fileContent = typeof response.data === 'object' ? JSON.stringify(response.data) : response.data;
+
+            const versionRegex = /def\s+version\s*\(\s*self\s*\)\s*->\s*str\s*:\s*[\r\n\s]*return\s*["']([^"']+)["']/i;
+            const match = fileContent.match(versionRegex);
 
             return match && match[1] ? match[1] : null;
         } catch (error) {
@@ -241,6 +256,7 @@ class NostalgiaVersionChecker {
             return null;
         }
     }
+
 
     // Tek dosyayı güncelle
     async updateSingleFile(fileConfig) {
