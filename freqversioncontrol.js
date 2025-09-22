@@ -146,15 +146,31 @@ class NostalgiaVersionChecker {
     }
 
     // Remote dosya hash'i hesapla
+    // async calculateRemoteHash(url) {
+    //     try {
+    //         const response = await axios.get(url, this.axiosConfig);
+    //         return crypto.createHash('sha256').update(response.data).digest('hex');
+    //     } catch (error) {
+    //         console.error(`❌ Remote hash hesaplanırken hata (${url}):`, error.message);
+    //         return null;
+    //     }
+    // }
     async calculateRemoteHash(url) {
         try {
             const response = await axios.get(url, this.axiosConfig);
-            return crypto.createHash('sha256').update(response.data).digest('hex');
+
+            // 如果是对象，转换为字符串
+            const data = typeof response.data === 'object'
+                ? JSON.stringify(response.data)
+                : response.data;
+
+            return crypto.createHash('sha256').update(data).digest('hex');
         } catch (error) {
             console.error(`❌ Remote hash hesaplanırken hata (${url}):`, error.message);
             return null;
         }
     }
+
 
     // Tek dosya için güncelleme kontrolü
     async checkSingleFile(fileConfig) {
