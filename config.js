@@ -1,6 +1,6 @@
 module.exports = {
     // Version kontrol ayarları
-    checkIntervalMinutes: 720, // Kaç dakikada bir kontrol edilecek
+    checkIntervalMinutes: process.env.CHECKINTERVALMINUTES || 720, // Kaç dakikada bir kontrol edilecek
     
         // Telegram 机器人配置
     telegram: {
