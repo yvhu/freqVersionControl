@@ -212,50 +212,42 @@ class NostalgiaVersionChecker {
     // Belirli dosya için version bilgisi al
     getCurrentVersionForFile(filePath) {
         try {
-            if (!fs.existsSync(filePath)) {
-                console.log(`❌ ${filePath} dosyası bulunamadı!`);
-                return null;
-            }
+            if (!fs.existsSync(filePath)) return '未知';
 
-            const fileContent = fs.readFileSync(filePath, 'utf8');
-            // const versionRegex = /def version\(self\) -> str:\s*\n\s*return\s*["']([^"']+)["']/;
-            const versionRegex = /def\s+version\s*\(\s*self\s*\)\s*->\s*str\s*:\s*[\r\n\s]*return\s*["']([^"']+)["']/i;
-            const match = fileContent.match(versionRegex);
+            const content = fs.readFileSync(filePath, 'utf8');
 
-            return match && match[1] ? match[1] : null;
-        } catch (error) {
-            console.error(`❌ ${filePath} okunurken hata:`, error.message);
-            return null;
+            // 更宽松的正则，忽略空格、换行
+            const versionRegex = /def\s+version\s*\(\s*self\s*\)\s*->\s*str\s*:\s*[\s\S]*?return\s*["']([^"']+)["']/i;
+            const match = content.match(versionRegex);
+
+            return match && match[1] ? match[1] : '未知';
+        } catch (err) {
+            console.error('❌ 当前版本获取失败:', err.message);
+            return '未知';
         }
     }
 
-    // Remote dosya için version bilgisi al
-    // async getRemoteVersionForFile(url) {
-    //     try {
-    //         const response = await axios.get(url, this.axiosConfig);
-    //         const versionRegex = /def version\(self\) -> str:\s*\n\s*return\s*["']([^"']+)["']/;
-    //         const match = response.data.match(versionRegex);
 
-    //         return match && match[1] ? match[1] : null;
-    //     } catch (error) {
-    //         console.error(`❌ Remote version alınırken hata (${url}):`, error.message);
-    //         return null;
-    //     }
-    // }
+    // Remote dosya için version bilgisi al
     async getRemoteVersionForFile(url) {
         try {
             const response = await axios.get(url, this.axiosConfig);
-            const fileContent = typeof response.data === 'object' ? JSON.stringify(response.data) : response.data;
 
-            const versionRegex = /def\s+version\s*\(\s*self\s*\)\s*->\s*str\s*:\s*[\r\n\s]*return\s*["']([^"']+)["']/i;
-            const match = fileContent.match(versionRegex);
+            // 如果是 JSON 对象，转换为字符串
+            const content = typeof response.data === 'object'
+                ? JSON.stringify(response.data)
+                : response.data;
 
-            return match && match[1] ? match[1] : null;
-        } catch (error) {
-            console.error(`❌ Remote version alınırken hata (${url}):`, error.message);
-            return null;
+            const versionRegex = /def\s+version\s*\(\s*self\s*\)\s*->\s*str\s*:\s*[\s\S]*?return\s*["']([^"']+)["']/i;
+            const match = content.match(versionRegex);
+
+            return match && match[1] ? match[1] : '未知';
+        } catch (err) {
+            console.error(`❌ 远程版本获取失败 (${url}):`, err.message);
+            return '未知';
         }
     }
+
 
 
     // Tek dosyayı güncelle
