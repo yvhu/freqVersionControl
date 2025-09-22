@@ -339,7 +339,12 @@ class NostalgiaVersionChecker {
                 if (error) {
                     console.error('❌ Docker down komutu hatası:', error.message);
                     const duration = ((Date.now() - startTime) / 1000).toFixed(2) + 's';
-                    this.telegramNotifier.notifyDockerRestart('失败', 0, duration, error.message);
+                    // 修复 Docker 错误通知
+                    this.telegramNotifier.notifyDockerRestart('失败', {
+                        count: 0,
+                        duration,
+                        log: error.message
+                    });
                     reject(error);
                     return;
                 }
@@ -350,7 +355,6 @@ class NostalgiaVersionChecker {
                     outputLog += stdout;
                 }
 
-                // Containerlari tekrar başlat
                 console.log('🚀 Docker containerlar başlatılıyor...');
 
                 exec(config.docker.upCommand, (error, stdout, stderr) => {
@@ -359,7 +363,12 @@ class NostalgiaVersionChecker {
                     if (error) {
                         console.error('❌ Docker up komutu hatası:', error.message);
                         outputLog += error.message;
-                        this.telegramNotifier.notifyDockerRestart('失败', containerCount, duration, outputLog);
+                        // 修复 Docker 错误通知
+                        this.telegramNotifier.notifyDockerRestart('失败', {
+                            count: containerCount,
+                            duration,
+                            log: outputLog
+                        });
                         reject(error);
                         return;
                     }
@@ -370,13 +379,17 @@ class NostalgiaVersionChecker {
                         outputLog += stdout;
                     }
 
-                    // 获取容器数量（简单估算）
+                    // 获取容器数量
                     const lines = outputLog.split('\n');
                     containerCount = lines.filter(line =>
                         line.includes('Container') || line.includes('container')).length;
 
-                    // 发送成功通知
-                    this.telegramNotifier.notifyDockerRestart('成功', containerCount, duration, outputLog);
+                    // 修复 Docker 成功通知
+                    this.telegramNotifier.notifyDockerRestart('成功', {
+                        count: containerCount,
+                        duration,
+                        log: outputLog
+                    });
                     resolve();
                 });
             });
@@ -411,69 +424,83 @@ class NostalgiaVersionChecker {
         }
     }
 
-    // Çoklu dosya version kontrol işlemi
+    // 在 checkForUpdates 方法中修复所有通知调用
     async checkForUpdates() {
         console.log('\n🚀 动态多文件版本控制启动...');
         console.log(`⏰ 时间: ${new Date().toLocaleString('zh-CN')}`);
 
         try {
-            // 构建文件列表
             await this.buildCompleteFileList();
             console.log(`📊 总共 ${this.allFiles.length} 个文件需要检查`);
 
             const updateResults = [];
             let hasUpdates = false;
+            let currentVersion = null;
+            let latestVersion = null;
 
-            // 检查每个文件
             for (const fileConfig of this.allFiles) {
                 const result = await this.checkSingleFile(fileConfig);
                 updateResults.push(result);
 
                 if (result.needsUpdate) {
                     hasUpdates = true;
+                    latestVersion = result.remoteInfo;
+                }
+                if (fileConfig.type === 'strategy' && result.currentInfo) {
+                    currentVersion = result.currentInfo;
                 }
             }
 
             const filesToUpdate = updateResults.filter(r => r.needsUpdate);
 
-            // 发送检查完成通知
+            // 修复检查完成通知
             await this.telegramNotifier.notifyCheckComplete(
                 this.allFiles.length,
                 filesToUpdate.length,
-                filesToUpdate.length > 0 ? '需要更新' : '一切正常'
+                filesToUpdate.length > 0 ? '需要更新' : '一切正常',
+                { current: currentVersion, latest: latestVersion }
             );
 
             if (filesToUpdate.length > 0) {
                 console.log(`\n🆕 ${filesToUpdate.length} 个文件需要更新:`);
 
-                // 发送新版本可用通知
+                // 修复新版本可用通知
                 const firstFile = filesToUpdate[0];
                 await this.telegramNotifier.notifyUpdateAvailable(
                     firstFile.currentInfo,
-                    firstFile.remoteInfo
+                    firstFile.remoteInfo,
+                    firstFile.file
                 );
 
                 console.log('\n⬇️ 开始更新...');
 
-                // 更新文件
                 let successCount = 0;
                 const updatedFileNames = [];
+                const startTime = Date.now();
 
                 for (const result of filesToUpdate) {
-                    const success = await this.updateSingleFile(result.file);
-                    if (success) {
-                        successCount++;
-                        updatedFileNames.push(result.file.name);
+                    try {
+                        const success = await this.updateSingleFile(result.file);
+                        if (success) {
+                            successCount++;
+                            updatedFileNames.push(result.file.name);
+                        }
+                    } catch (error) {
+                        console.error(`❌ 更新文件 ${result.file.name} 失败:`, error.message);
+                        // 修复单个文件更新失败通知
+                        await this.telegramNotifier.notifyUpdateError(error, result.file);
                     }
                 }
 
+                const duration = ((Date.now() - startTime) / 1000).toFixed(2) + 's';
                 console.log(`\n📈 更新结果: ${successCount}/${filesToUpdate.length} 个文件成功`);
 
-                // 发送更新成功通知
                 if (successCount > 0) {
+                    // 修复更新成功通知
                     await this.telegramNotifier.notifyUpdateSuccess(
-                        firstFile.remoteInfo,
-                        updatedFileNames
+                        latestVersion,
+                        updatedFileNames,
+                        { duration }
                     );
                 }
 
@@ -482,10 +509,13 @@ class NostalgiaVersionChecker {
                     try {
                         await this.restartDockerContainers();
                         console.log('🎉 更新和 Docker 重启完成!');
-                        // notifyDockerRestart 已经在 restartDockerContainers 内部调用
                     } catch (dockerError) {
                         console.error('⚠️ Docker 重启失败:', dockerError.message);
-                        await this.telegramNotifier.notifyUpdateError(dockerError);
+                        // 修复 Docker 错误通知
+                        await this.telegramNotifier.notifyUpdateError(dockerError, {
+                            name: 'Docker Containers',
+                            githubUrl: 'N/A'
+                        });
                     }
                 }
 
@@ -495,7 +525,7 @@ class NostalgiaVersionChecker {
 
         } catch (error) {
             console.error('❌ 检查更新时发生错误:', error.message);
-            // 发送错误通知
+            // 修复主错误通知
             await this.telegramNotifier.notifyUpdateError(error);
         }
 
