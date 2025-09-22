@@ -1,6 +1,6 @@
 module.exports = {
     // Version kontrol ayarları
-    checkIntervalMinutes: 15, // Kaç dakikada bir kontrol edilecek
+    checkIntervalMinutes: 60, // Kaç dakikada bir kontrol edilecek
     
     // GitHub repository ayarları
     github: {
