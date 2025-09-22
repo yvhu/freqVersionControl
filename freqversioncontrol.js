@@ -328,31 +328,55 @@ class NostalgiaVersionChecker {
 
     // Docker container'ları restart et
     async restartDockerContainers() {
+        const startTime = Date.now();
+        let containerCount = 0;
+        let outputLog = '';
+
         return new Promise((resolve, reject) => {
             console.log('🐳 Docker containerlar durduruluyor...');
 
             exec(config.docker.downCommand, (error, stdout, stderr) => {
                 if (error) {
                     console.error('❌ Docker down komutu hatası:', error.message);
+                    const duration = ((Date.now() - startTime) / 1000).toFixed(2) + 's';
+                    this.telegramNotifier.notifyDockerRestart('失败', 0, duration, error.message);
                     reject(error);
                     return;
                 }
 
                 console.log('🛑 Docker containerlar durduruldu');
-                if (stdout) console.log(stdout);
+                if (stdout) {
+                    console.log(stdout);
+                    outputLog += stdout;
+                }
 
                 // Containerlari tekrar başlat
                 console.log('🚀 Docker containerlar başlatılıyor...');
 
                 exec(config.docker.upCommand, (error, stdout, stderr) => {
+                    const duration = ((Date.now() - startTime) / 1000).toFixed(2) + 's';
+
                     if (error) {
                         console.error('❌ Docker up komutu hatası:', error.message);
+                        outputLog += error.message;
+                        this.telegramNotifier.notifyDockerRestart('失败', containerCount, duration, outputLog);
                         reject(error);
                         return;
                     }
 
                     console.log('✅ Docker containerlar başarıyla başlatıldı!');
-                    if (stdout) console.log(stdout);
+                    if (stdout) {
+                        console.log(stdout);
+                        outputLog += stdout;
+                    }
+
+                    // 获取容器数量（简单估算）
+                    const lines = outputLog.split('\n');
+                    containerCount = lines.filter(line =>
+                        line.includes('Container') || line.includes('container')).length;
+
+                    // 发送成功通知
+                    this.telegramNotifier.notifyDockerRestart('成功', containerCount, duration, outputLog);
                     resolve();
                 });
             });
@@ -458,7 +482,7 @@ class NostalgiaVersionChecker {
                     try {
                         await this.restartDockerContainers();
                         console.log('🎉 更新和 Docker 重启完成!');
-                        await this.telegramNotifier.sendCustomMessage('🐳 Docker 容器重启成功！');
+                        // notifyDockerRestart 已经在 restartDockerContainers 内部调用
                     } catch (dockerError) {
                         console.error('⚠️ Docker 重启失败:', dockerError.message);
                         await this.telegramNotifier.notifyUpdateError(dockerError);

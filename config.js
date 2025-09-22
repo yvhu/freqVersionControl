@@ -1,21 +1,76 @@
 module.exports = {
     // Version kontrol ayarları
     checkIntervalMinutes: process.env.CHECKINTERVALMINUTES || 720, // Kaç dakikada bir kontrol edilecek
-    
-        // Telegram 机器人配置
+
+    // Telegram 机器人配置
     telegram: {
-        enabled: true, // 是否启用 Telegram 通知
+        enabled: true,
         botToken: process.env.TELEGRAM_BOT_TOKEN || 'your_bot_token_here',
         chatId: process.env.TELEGRAM_CHAT_ID || 'your_chat_id_here',
-        // 可选：消息模板
+        // 增强版消息模板
         messages: {
-            updateAvailable: '🆕 发现新版本！\n📦 项目: {repo}\n📋 当前版本: {currentVersion}\n🚀 新版本: {remoteVersion}\n⏰ 时间: {time}',
-            updateSuccess: '✅ 更新成功！\n📦 项目: {repo}\n🔄 新版本: {version}\n📁 更新文件: {updatedFiles}\n⏰ 时间: {time}',
-            updateError: '❌ 更新失败！\n📦 项目: {repo}\n📋 错误信息: {error}\n⏰ 时间: {time}',
-            checkComplete: '📊 版本检查完成\n📦 项目: {repo}\n✅ 状态: {status}\n📁 检查文件数: {totalFiles}\n🔄 需要更新: {needsUpdate}\n⏰ 时间: {time}'
+            updateAvailable: `🆕 *发现新版本！*
+    📦 项目: {repo}
+    🌿 分支: {branch}
+    📋 当前版本: {currentVersion}
+    🚀 远程版本: {remoteVersion}
+    📊 版本差异: {versionDiff}
+    📁 文件: {fileName}
+    🔗 GitHub: [查看文件]({githubUrl})
+    ⏰ 时间: {time}`,
+
+            updateSuccess: `✅ *更新成功！*
+    📦 项目: {repo}
+    🌿 分支: {branch}
+    🔄 更新版本: {version}
+    📁 更新文件: {updatedFiles}
+    📊 文件大小: {fileSize}
+    📝 SHA256: {fileHash}
+    ⏰ 更新时间: {time}
+    🕒 耗时: {duration}`,
+
+            updateError: `❌ *更新失败！*
+    📦 项目: {repo}
+    🌿 分支: {branch}
+    📁 文件: {fileName}
+    📋 错误类型: {errorType}
+    🔍 错误详情: {errorMessage}
+    📚 错误堆栈: {errorStack}
+    ⏰ 时间: {time}`,
+
+            checkComplete: `📊 *版本检查完成*
+    📦 项目: {repo}
+    🌿 分支: {branch}
+    ✅ 检查状态: {status}
+    📁 总检查文件: {totalFiles}
+    🔄 需要更新: {needsUpdate}
+    📋 当前版本: {currentVersion}
+    🚀 最新版本: {latestVersion}
+    ⏰ 检查时间: {time}
+    🕒 下次检查: {nextCheckTime}
+    📈 更新率: {updateRate}%`,
+
+            dockerRestart: `🐳 *Docker 容器重启*
+    📦 项目: {repo}
+    ✅ 状态: {status}
+    📊 容器数量: {containerCount}
+    ⏰ 重启时间: {duration}
+    🕒 完成时间: {time}
+    📋 输出日志: {outputLog}`,
+
+            summaryReport: `📈 *更新摘要报告*
+    📦 项目: {repo}
+    📅 周期: {period}
+    📁 总文件数: {totalFiles}
+    ✅ 成功更新: {successCount}
+    ❌ 失败更新: {failedCount}
+    ⚡ 更新次数: {updateCount}
+    📊 成功率: {successRate}%
+    ⏰ 最后检查: {lastCheckTime}
+    🌐 运行时长: {uptime}`
         }
     },
-    
+
     // GitHub repository ayarları
     github: {
         owner: 'iterativv',
@@ -50,18 +105,18 @@ module.exports = {
 
     // Geriye uyumluluk için eski dosya listesi (deprecated)
     files: [],
-    
+
     // Geriye uyumluluk için eski ayarlar (deprecated)
     fileName: '../NostalgiaForInfinityX6.py', // Bir üst klasördeki dosya
     githubUrl: 'https://raw.githubusercontent.com/iterativv/NostalgiaForInfinity/refs/heads/main/NostalgiaForInfinityX6.py',
-    
+
     // Docker ayarları
     docker: {
         enabled: true, // Docker restart
         downCommand: 'docker compose down',
         upCommand: 'docker compose up -d'
     },
-    
+
     // Proxy ayarları
     proxy: {
         enabled: false, // Proxy
@@ -69,7 +124,7 @@ module.exports = {
         port: 9090,
         protocol: 'http'
     },
-    
+
     // HTTP isteği ayarları
     request: {
         timeout: 30000, // Timeout

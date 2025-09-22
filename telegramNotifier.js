@@ -43,25 +43,34 @@ class TelegramNotifier {
     }
 
     // 发送新版本可用通知
-    async notifyUpdateAvailable(currentVersion, remoteVersion) {
-        const message = this.formatMessage(this.messages.updateAvailable, {
-            repo: `${config.github.owner}/${config.github.repo}`,
-            currentVersion: currentVersion || '未知',
-            remoteVersion: remoteVersion || '未知',
-            time: new Date().toLocaleString('zh-CN')
-        });
-        return await this.sendMessage(message);
+    async notifyUpdateAvailable(fileConfig, currentVersion, remoteVersion, versionDiff) {
+        const message = config.telegram.messages.updateAvailable
+            .replace('{repo}', config.github.repo)
+            .replace('{branch}', config.github.branch)
+            .replace('{currentVersion}', currentVersion || '未知')
+            .replace('{remoteVersion}', remoteVersion || '未知')
+            .replace('{versionDiff}', versionDiff)
+            .replace('{fileName}', fileConfig.name)
+            .replace('{githubUrl}', fileConfig.githubUrl)
+            .replace('{time}', new Date().toLocaleString('zh-CN'));
+
+        await this.sendMessage(message);
     }
 
+
     // 发送更新成功通知
-    async notifyUpdateSuccess(version, updatedFiles = []) {
-        const message = this.formatMessage(this.messages.updateSuccess, {
-            repo: `${config.github.owner}/${config.github.repo}`,
-            version: version || '未知',
-            updatedFiles: updatedFiles.length > 0 ? updatedFiles.join(', ') : '无',
-            time: new Date().toLocaleString('zh-CN')
-        });
-        return await this.sendMessage(message);
+    async notifyUpdateSuccess(version, updatedFiles, fileSize, fileHash, duration) {
+        const message = config.telegram.messages.updateSuccess
+            .replace('{repo}', config.github.repo)
+            .replace('{branch}', config.github.branch)
+            .replace('{version}', version)
+            .replace('{updatedFiles}', updatedFiles.join(', '))
+            .replace('{fileSize}', this.formatFileSize(fileSize))
+            .replace('{fileHash}', fileHash ? fileHash.substring(0, 12) + '...' : '未知')
+            .replace('{time}', new Date().toLocaleString('zh-CN'))
+            .replace('{duration}', duration);
+
+        await this.sendMessage(message);
     }
 
     // 发送更新失败通知
@@ -75,20 +84,59 @@ class TelegramNotifier {
     }
 
     // 发送检查完成通知
-    async notifyCheckComplete(totalFiles, needsUpdate, status) {
-        const message = this.formatMessage(this.messages.checkComplete, {
-            repo: `${config.github.owner}/${config.github.repo}`,
-            status: status,
-            totalFiles: totalFiles,
-            needsUpdate: needsUpdate,
-            time: new Date().toLocaleString('zh-CN')
-        });
-        return await this.sendMessage(message);
+    async notifyCheckComplete(totalFiles, needsUpdate, status, currentVersion, latestVersion, updateRate) {
+        const nextCheckTime = new Date(Date.now() + config.checkIntervalMinutes * 60 * 1000)
+            .toLocaleString('zh-CN');
+
+        const message = config.telegram.messages.checkComplete
+            .replace('{repo}', config.github.repo)
+            .replace('{branch}', config.github.branch)
+            .replace('{status}', status)
+            .replace('{totalFiles}', totalFiles)
+            .replace('{needsUpdate}', needsUpdate)
+            .replace('{currentVersion}', currentVersion || '未知')
+            .replace('{latestVersion}', latestVersion || '未知')
+            .replace('{time}', new Date().toLocaleString('zh-CN'))
+            .replace('{nextCheckTime}', nextCheckTime)
+            .replace('{updateRate}', updateRate.toFixed(1));
+
+        await this.sendMessage(message);
     }
 
     // 发送自定义消息
     async sendCustomMessage(text) {
         return await this.sendMessage(text);
+    }
+
+    // Docker 重启通知
+    // Docker 重启通知
+    async notifyDockerRestart(status, containerCount, duration, outputLog) {
+        try {
+            // 限制日志长度，避免消息过长
+            const truncatedLog = outputLog.length > 200
+                ? outputLog.substring(0, 200) + '...'
+                : outputLog;
+
+            const message = config.telegram.messages.dockerRestart
+                .replace('{repo}', config.github.repo)
+                .replace('{status}', status)
+                .replace('{containerCount}', containerCount || '未知')
+                .replace('{duration}', duration)
+                .replace('{time}', new Date().toLocaleString('zh-CN'))
+                .replace('{outputLog}', truncatedLog);
+
+            await this.sendMessage(message);
+        } catch (error) {
+            console.error('❌ 发送 Docker 重启通知失败:', error.message);
+        }
+    }
+
+    // 辅助方法：格式化文件大小
+    formatFileSize(bytes) {
+        if (!bytes) return '未知';
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(1024));
+        return (bytes / Math.pow(1024, i)).toFixed(2) + ' ' + sizes[i];
     }
 }
 
