@@ -1,9 +1,11 @@
+require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const { exec } = require('child_process');
 const crypto = require('crypto');
 const config = require('./config');
+const TelegramNotifier = require('./telegramNotifier');
 
 class NostalgiaVersionChecker {
     constructor() {
@@ -13,19 +15,22 @@ class NostalgiaVersionChecker {
         this.github = config.github;
         this.allFiles = []; // Tüm dosyalar (static + dynamic)
         this.checkInterval = config.checkIntervalMinutes * 60 * 1000;
-        
+
+        // 初始化 Telegram 通知器
+        this.telegramNotifier = new TelegramNotifier();
+
         // Geriye uyumluluk için eski ayarlar
         this.files = config.files || [];
         this.fileName = config.fileName;
         this.githubUrl = config.githubUrl;
         this.currentVersion = null;
-        
+
         // Axios config'i oluştur
         this.axiosConfig = {
             headers: config.request.headers,
             timeout: config.request.timeout
         };
-        
+
         // GitHub API için ayrı config (daha basit headers)
         this.githubApiConfig = {
             timeout: config.request.timeout,
@@ -34,7 +39,7 @@ class NostalgiaVersionChecker {
                 'Accept': 'application/vnd.github.v3+json'
             }
         };
-        
+
         // Proxy ayarları (eğer aktifse)
         if (config.proxy.enabled) {
             this.axiosConfig.proxy = {
@@ -55,9 +60,9 @@ class NostalgiaVersionChecker {
         try {
             const url = `${this.github.apiUrl}/contents/${folderPath}?ref=${this.github.branch}`;
             console.log(`🔍 GitHub API: ${folderPath} klasörü kontrol ediliyor...`);
-            
+
             const response = await axios.get(url, this.githubApiConfig);
-            
+
             if (Array.isArray(response.data)) {
                 return response.data.filter(item => item.type === 'file');
             }
@@ -75,7 +80,7 @@ class NostalgiaVersionChecker {
 
         for (const folder of this.dynamicFolders) {
             const githubFiles = await this.getGitHubFolderContents(folder.githubPath);
-            
+
             for (const githubFile of githubFiles) {
                 // Dosya uzantısını kontrol et
                 const fileExt = path.extname(githubFile.name).toLowerCase();
@@ -93,7 +98,7 @@ class NostalgiaVersionChecker {
                     dynamicFiles.push(fileConfig);
                 }
             }
-            
+
             console.log(`📁 ${folder.name}: ${githubFiles.length} dosya bulundu, ${dynamicFiles.filter(f => f.githubPath.startsWith(folder.githubPath)).length} dosya eklendi`);
         }
 
@@ -103,7 +108,7 @@ class NostalgiaVersionChecker {
     // Tüm dosya listesini oluştur (static + dynamic)
     async buildCompleteFileList() {
         console.log('📋 Tam dosya listesi oluşturuluyor...');
-        
+
         // Static dosyaları ekle
         const staticFiles = this.staticFiles.map(file => ({
             ...file,
@@ -117,12 +122,12 @@ class NostalgiaVersionChecker {
         const legacyFiles = this.files || [];
 
         this.allFiles = [...staticFiles, ...dynamicFiles, ...legacyFiles];
-        
+
         console.log(`✅ Toplam ${this.allFiles.length} dosya tespit edildi:`);
         console.log(`  📌 Static: ${staticFiles.length}`);
         console.log(`  🔄 Dynamic: ${dynamicFiles.length}`);
         console.log(`  🔙 Legacy: ${legacyFiles.length}`);
-        
+
         return this.allFiles;
     }
 
@@ -154,7 +159,7 @@ class NostalgiaVersionChecker {
     // Tek dosya için güncelleme kontrolü
     async checkSingleFile(fileConfig) {
         console.log(`\n📁 ${fileConfig.name} kontrol ediliyor...`);
-        
+
         let needsUpdate = false;
         let currentInfo = null;
         let remoteInfo = null;
@@ -163,7 +168,7 @@ class NostalgiaVersionChecker {
             // Python dosyası için version kontrolü
             currentInfo = this.getCurrentVersionForFile(fileConfig.localPath);
             remoteInfo = await this.getRemoteVersionForFile(fileConfig.githubUrl);
-            
+
             if (currentInfo && remoteInfo) {
                 const comparison = this.compareVersions(currentInfo, remoteInfo);
                 needsUpdate = comparison === 1;
@@ -173,7 +178,7 @@ class NostalgiaVersionChecker {
             // Config dosyaları için hash kontrolü
             currentInfo = this.calculateFileHash(fileConfig.localPath);
             remoteInfo = await this.calculateRemoteHash(fileConfig.githubUrl);
-            
+
             if (currentInfo && remoteInfo) {
                 needsUpdate = currentInfo !== remoteInfo;
                 console.log(`🔐 Hash karşılaştırması: ${needsUpdate ? 'Farklı' : 'Aynı'}`);
@@ -199,7 +204,7 @@ class NostalgiaVersionChecker {
             const fileContent = fs.readFileSync(filePath, 'utf8');
             const versionRegex = /def version\(self\) -> str:\s*\n\s*return\s*["']([^"']+)["']/;
             const match = fileContent.match(versionRegex);
-            
+
             return match && match[1] ? match[1] : null;
         } catch (error) {
             console.error(`❌ ${filePath} okunurken hata:`, error.message);
@@ -213,7 +218,7 @@ class NostalgiaVersionChecker {
             const response = await axios.get(url, this.axiosConfig);
             const versionRegex = /def version\(self\) -> str:\s*\n\s*return\s*["']([^"']+)["']/;
             const match = response.data.match(versionRegex);
-            
+
             return match && match[1] ? match[1] : null;
         } catch (error) {
             console.error(`❌ Remote version alınırken hata (${url}):`, error.message);
@@ -226,18 +231,18 @@ class NostalgiaVersionChecker {
         try {
             console.log(`⬇️  ${fileConfig.name} indiriliyor...`);
             const response = await axios.get(fileConfig.githubUrl, this.axiosConfig);
-            
+
             // Klasör yoksa oluştur
             const dir = path.dirname(fileConfig.localPath);
             if (!fs.existsSync(dir)) {
                 fs.mkdirSync(dir, { recursive: true });
                 console.log(`📁 Klasör oluşturuldu: ${dir}`);
             }
-            
+
             // Dosyayı kaydet
             fs.writeFileSync(fileConfig.localPath, response.data, 'utf8');
             console.log(`✅ ${fileConfig.name} başarıyla güncellendi!`);
-            
+
             return true;
         } catch (error) {
             console.error(`❌ ${fileConfig.name} güncellenirken hata:`, error.message);
@@ -254,11 +259,11 @@ class NostalgiaVersionChecker {
             }
 
             const fileContent = fs.readFileSync(this.fileName, 'utf8');
-            
+
             // Version fonksiyonunu bul ve version string'ini çıkart
             const versionRegex = /def version\(self\) -> str:\s*\n\s*return\s*["']([^"']+)["']/;
             const match = fileContent.match(versionRegex);
-            
+
             if (match && match[1]) {
                 this.currentVersion = match[1];
                 console.log(`📋 Mevcut version: ${this.currentVersion}`);
@@ -278,10 +283,10 @@ class NostalgiaVersionChecker {
         try {
             console.log('🔍 GitHub\'dan version kontrol ediliyor...');
             const response = await axios.get(this.githubUrl, this.axiosConfig);
-            
+
             const versionRegex = /def version\(self\) -> str:\s*\n\s*return\s*["']([^"']+)["']/;
             const match = response.data.match(versionRegex);
-            
+
             if (match && match[1]) {
                 console.log(`🌐 GitHub version: ${match[1]}`);
                 return match[1];
@@ -304,16 +309,16 @@ class NostalgiaVersionChecker {
             // "v" karakterini kaldır ve sayıları ayır
             const currentParts = current.replace('v', '').split('.').map(Number);
             const remoteParts = remote.replace('v', '').split('.').map(Number);
-            
+
             // Major, minor, patch karşılaştırması
             for (let i = 0; i < Math.max(currentParts.length, remoteParts.length); i++) {
                 const curr = currentParts[i] || 0;
                 const rem = remoteParts[i] || 0;
-                
+
                 if (rem > curr) return 1;  // Remote daha yüksek
                 if (rem < curr) return -1; // Current daha yüksek
             }
-            
+
             return 0; // Eşit
         } catch (error) {
             console.error('❌ Version karşılaştırma hatası:', error.message);
@@ -325,27 +330,27 @@ class NostalgiaVersionChecker {
     async restartDockerContainers() {
         return new Promise((resolve, reject) => {
             console.log('🐳 Docker containerlar durduruluyor...');
-            
+
             exec(config.docker.downCommand, (error, stdout, stderr) => {
                 if (error) {
                     console.error('❌ Docker down komutu hatası:', error.message);
                     reject(error);
                     return;
                 }
-                
+
                 console.log('🛑 Docker containerlar durduruldu');
                 if (stdout) console.log(stdout);
-                
+
                 // Containerlari tekrar başlat
                 console.log('🚀 Docker containerlar başlatılıyor...');
-                
+
                 exec(config.docker.upCommand, (error, stdout, stderr) => {
                     if (error) {
                         console.error('❌ Docker up komutu hatası:', error.message);
                         reject(error);
                         return;
                     }
-                    
+
                     console.log('✅ Docker containerlar başarıyla başlatıldı!');
                     if (stdout) console.log(stdout);
                     resolve();
@@ -359,14 +364,14 @@ class NostalgiaVersionChecker {
         try {
             console.log('⬇️  Yeni version indiriliyor...');
             const response = await axios.get(this.githubUrl, this.axiosConfig);
-            
+
             // Yeni dosyayı kaydet
             fs.writeFileSync(this.fileName, response.data, 'utf8');
             console.log('✅ Dosya başarıyla güncellendi!');
-            
+
             // Yeni version'u kontrol et
             this.getCurrentVersion();
-            
+
             // Docker restart işlemi
             if (config.docker.enabled) {
                 try {
@@ -376,7 +381,7 @@ class NostalgiaVersionChecker {
                     console.error('⚠️  Docker restart başarısız, ancak dosya güncellendi:', dockerError.message);
                 }
             }
-            
+
         } catch (error) {
             console.error('❌ Dosya güncellenirken hata:', error.message);
         }
@@ -384,61 +389,92 @@ class NostalgiaVersionChecker {
 
     // Çoklu dosya version kontrol işlemi
     async checkForUpdates() {
-        console.log('\n🚀 Dinamik çoklu dosya version kontrol başlatılıyor...');
-        console.log(`⏰ Zaman: ${new Date().toLocaleString('tr-TR')}`);
-        
-        // Önce tüm dosya listesini oluştur
-        await this.buildCompleteFileList();
-        
-        console.log(`📊 Toplam ${this.allFiles.length} dosya kontrol edilecek`);
-        
-        const updateResults = [];
-        let hasUpdates = false;
+        console.log('\n🚀 动态多文件版本控制启动...');
+        console.log(`⏰ 时间: ${new Date().toLocaleString('zh-CN')}`);
 
-        // Her dosyayı kontrol et
-        for (const fileConfig of this.allFiles) {
-            const result = await this.checkSingleFile(fileConfig);
-            updateResults.push(result);
-            
-            if (result.needsUpdate) {
-                hasUpdates = true;
-            }
-        }
+        try {
+            // 构建文件列表
+            await this.buildCompleteFileList();
+            console.log(`📊 总共 ${this.allFiles.length} 个文件需要检查`);
 
-        // Güncelleme gerekli dosyaları listele
-        const filesToUpdate = updateResults.filter(r => r.needsUpdate);
-        
-        if (filesToUpdate.length > 0) {
-            console.log(`\n🆕 ${filesToUpdate.length} dosya güncelleme gerekiyor:`);
-            filesToUpdate.forEach(r => {
-                console.log(`  📄 ${r.file.name}`);
-            });
-            
-            console.log('\n⬇️  Güncelleme işlemi başlatılıyor...');
-            
-            // Dosyaları güncelle
-            let successCount = 0;
-            for (const result of filesToUpdate) {
-                const success = await this.updateSingleFile(result.file);
-                if (success) successCount++;
-            }
-            
-            console.log(`\n📈 Güncelleme sonucu: ${successCount}/${filesToUpdate.length} dosya başarılı`);
-            
-            // Docker restart (eğer en az bir dosya güncellendiyse)
-            if (successCount > 0 && config.docker.enabled) {
-                try {
-                    await this.restartDockerContainers();
-                    console.log('🎉 Güncelleme ve Docker restart tamamlandı!');
-                } catch (dockerError) {
-                    console.error('⚠️  Docker restart başarısız, ancak dosyalar güncellendi:', dockerError.message);
+            const updateResults = [];
+            let hasUpdates = false;
+
+            // 检查每个文件
+            for (const fileConfig of this.allFiles) {
+                const result = await this.checkSingleFile(fileConfig);
+                updateResults.push(result);
+
+                if (result.needsUpdate) {
+                    hasUpdates = true;
                 }
             }
-            
-        } else {
-            console.log('\n✅ Tüm dosyalar güncel, güncelleme gerekmez.');
+
+            const filesToUpdate = updateResults.filter(r => r.needsUpdate);
+
+            // 发送检查完成通知
+            await this.telegramNotifier.notifyCheckComplete(
+                this.allFiles.length,
+                filesToUpdate.length,
+                filesToUpdate.length > 0 ? '需要更新' : '一切正常'
+            );
+
+            if (filesToUpdate.length > 0) {
+                console.log(`\n🆕 ${filesToUpdate.length} 个文件需要更新:`);
+
+                // 发送新版本可用通知
+                const firstFile = filesToUpdate[0];
+                await this.telegramNotifier.notifyUpdateAvailable(
+                    firstFile.currentInfo,
+                    firstFile.remoteInfo
+                );
+
+                console.log('\n⬇️ 开始更新...');
+
+                // 更新文件
+                let successCount = 0;
+                const updatedFileNames = [];
+
+                for (const result of filesToUpdate) {
+                    const success = await this.updateSingleFile(result.file);
+                    if (success) {
+                        successCount++;
+                        updatedFileNames.push(result.file.name);
+                    }
+                }
+
+                console.log(`\n📈 更新结果: ${successCount}/${filesToUpdate.length} 个文件成功`);
+
+                // 发送更新成功通知
+                if (successCount > 0) {
+                    await this.telegramNotifier.notifyUpdateSuccess(
+                        firstFile.remoteInfo,
+                        updatedFileNames
+                    );
+                }
+
+                // Docker 重启
+                if (successCount > 0 && config.docker.enabled) {
+                    try {
+                        await this.restartDockerContainers();
+                        console.log('🎉 更新和 Docker 重启完成!');
+                        await this.telegramNotifier.sendCustomMessage('🐳 Docker 容器重启成功！');
+                    } catch (dockerError) {
+                        console.error('⚠️ Docker 重启失败:', dockerError.message);
+                        await this.telegramNotifier.notifyUpdateError(dockerError);
+                    }
+                }
+
+            } else {
+                console.log('\n✅ 所有文件都是最新的，无需更新。');
+            }
+
+        } catch (error) {
+            console.error('❌ 检查更新时发生错误:', error.message);
+            // 发送错误通知
+            await this.telegramNotifier.notifyUpdateError(error);
         }
-        
+
         console.log('─'.repeat(50));
     }
 
@@ -446,24 +482,24 @@ class NostalgiaVersionChecker {
     async checkForUpdatesLegacy() {
         console.log('\n🚀 Version kontrol başlatılıyor...');
         console.log(`⏰ Zaman: ${new Date().toLocaleString('tr-TR')}`);
-        
+
         // Mevcut version'u al
         const currentVersion = this.getCurrentVersion();
         if (!currentVersion) {
             console.log('❌ Mevcut version alınamadı, işlem iptal edildi.');
             return;
         }
-        
+
         // Remote version'u al
         const remoteVersion = await this.getRemoteVersion();
         if (!remoteVersion) {
             console.log('❌ Remote version alınamadı, işlem iptal edildi.');
             return;
         }
-        
+
         // Version'ları karşılaştır
         const comparison = this.compareVersions(currentVersion, remoteVersion);
-        
+
         if (comparison === 1) {
             console.log('🆕 Yeni version mevcut! Güncelleme başlatılıyor...');
             await this.updateFile();
@@ -472,7 +508,7 @@ class NostalgiaVersionChecker {
         } else {
             console.log('ℹ️  Mevcut version daha yeni veya eşit.');
         }
-        
+
         console.log('─'.repeat(50));
     }
 
@@ -484,7 +520,7 @@ class NostalgiaVersionChecker {
         console.log(`🌐 Proxy: ${config.proxy.enabled ? `${config.proxy.host}:${config.proxy.port}` : 'Pasif'}`);
         console.log(`🔗 GitHub: ${this.github.owner}/${this.github.repo} (${this.github.branch})`);
         console.log(`⏰ Kontrol aralığı: ${config.checkIntervalMinutes} dakika`);
-        
+
         // Konfigürasyon özeti
         console.log('\n⚙️  Konfigürasyon:');
         console.log(`  📌 Static dosyalar: ${this.staticFiles.length}`);
@@ -492,17 +528,17 @@ class NostalgiaVersionChecker {
         this.dynamicFolders.forEach(folder => {
             console.log(`    📁 ${folder.name} (${folder.fileExtensions.join(', ')})`);
         });
-        
+
         console.log('═'.repeat(50));
         console.log('🔄 Sürekli çalışma modu aktif - Durdurmak için Ctrl+C basın');
         console.log('═'.repeat(50));
-        
+
         // Graceful shutdown için signal handler'ları ekle
         this.setupGracefulShutdown();
-        
+
         // İlk kontrol
         await this.checkForUpdates();
-        
+
         // Sürekli kontrol döngüsü
         this.startContinuousMode();
     }
@@ -519,14 +555,14 @@ class NostalgiaVersionChecker {
         // SIGINT (Ctrl+C) ve SIGTERM sinyallerini yakala
         process.on('SIGINT', gracefulShutdown);
         process.on('SIGTERM', gracefulShutdown);
-        
+
         // Windows için
         if (process.platform === "win32") {
             const rl = require("readline").createInterface({
                 input: process.stdin,
                 output: process.stdout
             });
-            
+
             rl.on("SIGINT", () => {
                 process.emit("SIGINT");
             });
@@ -536,14 +572,14 @@ class NostalgiaVersionChecker {
     // Sürekli çalışma modu
     startContinuousMode() {
         console.log(`\n⏳ Sonraki kontrol ${config.checkIntervalMinutes} dakika sonra...`);
-        
+
         setTimeout(async () => {
             try {
                 await this.checkForUpdates();
             } catch (error) {
                 console.error('❌ Kontrol sırasında hata:', error.message);
             }
-            
+
             // Recursive olarak kendini tekrar çağır
             this.startContinuousMode();
         }, this.checkInterval);

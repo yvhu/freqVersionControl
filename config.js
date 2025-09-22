@@ -1,6 +1,20 @@
 module.exports = {
     // Version kontrol ayarları
-    checkIntervalMinutes: 15, // Kaç dakikada bir kontrol edilecek
+    checkIntervalMinutes: 720, // Kaç dakikada bir kontrol edilecek
+    
+        // Telegram 机器人配置
+    telegram: {
+        enabled: true, // 是否启用 Telegram 通知
+        botToken: process.env.TELEGRAM_BOT_TOKEN || 'your_bot_token_here',
+        chatId: process.env.TELEGRAM_CHAT_ID || 'your_chat_id_here',
+        // 可选：消息模板
+        messages: {
+            updateAvailable: '🆕 发现新版本！\n📦 项目: {repo}\n📋 当前版本: {currentVersion}\n🚀 新版本: {remoteVersion}\n⏰ 时间: {time}',
+            updateSuccess: '✅ 更新成功！\n📦 项目: {repo}\n🔄 新版本: {version}\n📁 更新文件: {updatedFiles}\n⏰ 时间: {time}',
+            updateError: '❌ 更新失败！\n📦 项目: {repo}\n📋 错误信息: {error}\n⏰ 时间: {time}',
+            checkComplete: '📊 版本检查完成\n📦 项目: {repo}\n✅ 状态: {status}\n📁 检查文件数: {totalFiles}\n🔄 需要更新: {needsUpdate}\n⏰ 时间: {time}'
+        }
+    },
     
     // GitHub repository ayarları
     github: {
